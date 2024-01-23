@@ -22,9 +22,9 @@ import (
 
 // GithubIssueSpec defines the desired state of GithubIssue
 type GithubIssueSpec struct {
-	// Important: Run "make" to regenerate code after modifying this file
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^https://github\.com/.*$`
 	Repo string `json:"repo,omitempty"`
 
 	// +kubebuilder:validation:Required
