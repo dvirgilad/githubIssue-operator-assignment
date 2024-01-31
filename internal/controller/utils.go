@@ -2,15 +2,17 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strings"
+
 	issuesv1 "dvir.io/githubissue/api/v1"
-	"github.com/google/go-github/v58/github"
+	"github.com/google/go-github/v56/github"
 	giturl "github.com/kubescape/go-git-url"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"strings"
 )
 
 func isGitHubURL(inputUrl string) (giturl.IGitURL, error) {
@@ -43,20 +45,20 @@ func searchForPR(timeline []*github.Timeline) v1.ConditionStatus {
 	return v1.ConditionFalse
 
 }
-func (r *GithubIssueReconciler) AddFinalizer(ctx context.Context, issue *issuesv1.GithubIssue) (ok bool, err error) {
+func (r *GithubIssueReconciler) AddFinalizer(ctx context.Context, issue *issuesv1.GithubIssue) (err error) {
 
 	if !controllerutil.ContainsFinalizer(issue, CloseIssuesFinalizer) {
 		r.Log.Info("adding finalizer")
 		controllerutil.AddFinalizer(issue, CloseIssuesFinalizer)
 		if err := r.Update(ctx, issue); err != nil {
 			r.Log.Error("unable to add finalizer", zap.Error(err))
-			return false, err
+			return err
 		}
 		r.Log.Info("added finalizer")
-		return true, nil
+		return nil
 	} else {
 
-		return false, nil
+		return nil
 	}
 
 }
@@ -116,4 +118,17 @@ func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *is
 	}
 	return nil
 
+}
+func (r *GithubIssueReconciler) fetchAllIssues(ctx context.Context, owner string, repo string) ([]*github.Issue, error) {
+	allIssues, response, err := r.GitHubClient.Issues.ListByRepo(ctx, owner, repo, nil)
+	if err != nil {
+		if response != nil {
+			r.Log.Error(fmt.Sprintf("failed fetching issues: %s", response.Status), zap.Error(err))
+			return []*github.Issue{}, err
+		}
+		r.Log.Error("failed fetching issues", zap.Error(err))
+		return []*github.Issue{}, err
+	}
+	r.Log.Info("fetched issues")
+	return allIssues, nil
 }

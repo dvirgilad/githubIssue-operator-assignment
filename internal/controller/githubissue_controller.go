@@ -18,15 +18,15 @@ package controller
 
 import (
 	"context"
-	issuesv1 "dvir.io/githubissue/api/v1"
+	"errors"
 	"fmt"
-	"github.com/google/go-github/v58/github"
-	"github.com/pkg/errors"
-	"go.elastic.co/ecszap"
-	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"time"
+
+	issuesv1 "dvir.io/githubissue/api/v1"
+	"github.com/google/go-github/v56/github"
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime"
-	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -34,9 +34,12 @@ import (
 // GithubIssueReconciler reconciles a GithubIssue object
 type GithubIssueReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Log    *zap.Logger
+	Scheme       *runtime.Scheme
+	Log          *zap.Logger
+	GitHubClient *github.Client
 }
+
+const ResyncDuration = 1 * time.Minute
 
 const CloseIssuesFinalizer = "issues.dvir.io/finalizer"
 
@@ -47,9 +50,7 @@ const CloseIssuesFinalizer = "issues.dvir.io/finalizer"
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	encoderConfig := ecszap.NewDefaultEncoderConfig()
-	core := ecszap.NewCore(encoderConfig, os.Stdout, zap.DebugLevel)
-	r.Log = zap.New(core, zap.AddCaller())
+
 	log := r.Log
 	var issueObject = &issuesv1.GithubIssue{}
 	if err := r.Get(ctx, req.NamespacedName, issueObject); err != nil {
@@ -57,7 +58,7 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Error("unable to fetch issue object", zap.Error(err))
 			return ctrl.Result{}, err
 		} else {
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: ResyncDuration}, nil
 		}
 	}
 	repoUrl, err := isGitHubURL(issueObject.Spec.Repo)
@@ -66,21 +67,14 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error("invalid git repo", zap.Error(err))
 		return ctrl.Result{}, err
 	}
-	gitHubToken := os.Getenv("GITHUB_TOKEN")
 	owner := repoUrl.GetOwnerName()
 	repo := repoUrl.GetRepoName()
 	log.Info(fmt.Sprintf("attempting to get isues from %s/%s", owner, repo))
-	ghClient := github.NewClient(nil).WithAuthToken(gitHubToken)
-	opt := &github.IssueListByRepoOptions{}
-	allIssues, response, err := ghClient.Issues.ListByRepo(ctx, owner, repo, opt)
+	allIssues, err := r.fetchAllIssues(ctx, owner, repo)
 	if err != nil {
-		err := errors.New(fmt.Sprintf("could not fetch issues: status %s", response.Status))
-		log.Error("failed fetching issues", zap.Error(err))
 		return ctrl.Result{}, err
 	}
-	log.Info("fetched issues")
 	gitHubIssue := searchForIssue(issueObject, allIssues)
-
 	// Check if issues is being deleted
 	if !issueObject.ObjectMeta.DeletionTimestamp.IsZero() {
 		//Issue is being deleted: close it
@@ -92,7 +86,7 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		state := "closed"
 		closedIssueRequest := &github.IssueRequest{State: &state}
-		_, _, err := ghClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, closedIssueRequest)
+		_, _, err := r.GitHubClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, closedIssueRequest)
 		if err != nil {
 			err := errors.New("could not close issue")
 			log.Error("error closing issue", zap.Error(err))
@@ -103,50 +97,51 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		} else {
 			if ok {
-				return ctrl.Result{}, nil
+				return ctrl.Result{RequeueAfter: ResyncDuration}, nil
 			}
 		}
 
 	} else {
-		//Issue is being is not deleted, add finalizer and search for it
-		_, err := r.AddFinalizer(ctx, issueObject)
+		//Issue is not being deleted, add finalizer and search for it
+		err := r.AddFinalizer(ctx, issueObject)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		gitHubIssue := searchForIssue(issueObject, allIssues)
 		if gitHubIssue == nil {
 
 			//Issue does not exist, create it
 			log.Info("creating issue")
 			newIssue := &github.IssueRequest{Title: &issueObject.Spec.Title, Body: &issueObject.Spec.Description}
-			_, response, err := ghClient.Issues.Create(ctx, owner, repo, newIssue)
+			_, response, err := r.GitHubClient.Issues.Create(ctx, owner, repo, newIssue)
 			if err != nil {
 				err := errors.New(fmt.Sprintf("could not create issue: status %s", response.Status))
 				log.Error("failed creating issue", zap.Error(err))
+				if err = r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionFalse, metav1.ConditionFalse); err != nil {
+					return ctrl.Result{}, err
+				}
 				return ctrl.Result{}, err
 			}
 			if err = r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionTrue, metav1.ConditionFalse); err != nil {
 				return ctrl.Result{}, err
 			}
 			log.Info("issue created")
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: ResyncDuration}, nil
 
 		} else {
 			//Issue exists, edit if needed and check for a PR
 			log.Info("editing issue")
 			editIssueRequest := &github.IssueRequest{Body: &issueObject.Spec.Description}
-			_, response, err := ghClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, editIssueRequest)
+			_, response, err := r.GitHubClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, editIssueRequest)
 			if err != nil {
 				err := errors.New(fmt.Sprintf("could not edit issue: status %s", response.Status))
 				log.Error("failed editing issue", zap.Error(err))
 				return ctrl.Result{}, err
 			}
-			//opts := &github.ListOptions{}
-			tl, _, err := ghClient.Issues.ListIssueTimeline(ctx, owner, repo, *gitHubIssue.Number, nil)
+			tl, _, err := r.GitHubClient.Issues.ListIssueTimeline(ctx, owner, repo, *gitHubIssue.Number, nil)
 			if err != nil {
 				log.Error("error fetching issue timeline", zap.Error(err))
-				return ctrl.Result{}, nil
+				return ctrl.Result{RequeueAfter: ResyncDuration}, nil
 			}
 
 			hasPR := searchForPR(tl)
@@ -155,12 +150,11 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 
 			log.Info("issue edited")
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: ResyncDuration}, nil
 		}
 
 	}
-	return ctrl.Result{}, nil
-
+	return ctrl.Result{RequeueAfter: ResyncDuration}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
