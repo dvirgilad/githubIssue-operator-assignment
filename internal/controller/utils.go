@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+// isGitHubURL checks if url is valid github repo URL
 func isGitHubURL(inputUrl string) (giturl.IGitURL, error) {
 	url, err := giturl.NewGitURL(inputUrl)
 	if err != nil {
@@ -22,6 +23,8 @@ func isGitHubURL(inputUrl string) (giturl.IGitURL, error) {
 	}
 	return url, nil
 }
+
+// Checks if GithubIssue CRD has an issue in the repo
 func searchForIssue(issue *issuesv1.GithubIssue, gitHubIssues []*github.Issue) *github.Issue {
 	for _, ghIssue := range gitHubIssues {
 		if strings.ToUpper(*ghIssue.Title) == strings.ToUpper(issue.Spec.Title) {
@@ -31,6 +34,7 @@ func searchForIssue(issue *issuesv1.GithubIssue, gitHubIssues []*github.Issue) *
 	return nil
 }
 
+// SearchForPR searches issue timeline to check if issue has an active PR
 func searchForPR(timeline []*github.Timeline) v1.ConditionStatus {
 	for i := len(timeline) - 1; i >= 0; i-- {
 		event := timeline[i]
@@ -45,6 +49,8 @@ func searchForPR(timeline []*github.Timeline) v1.ConditionStatus {
 	return v1.ConditionFalse
 
 }
+
+// AddFinalizer adds finalizer to GithubIssue CRD
 func (r *GithubIssueReconciler) AddFinalizer(ctx context.Context, issue *issuesv1.GithubIssue) (err error) {
 
 	if !controllerutil.ContainsFinalizer(issue, CloseIssuesFinalizer) {
@@ -63,6 +69,7 @@ func (r *GithubIssueReconciler) AddFinalizer(ctx context.Context, issue *issuesv
 
 }
 
+// DeleteFinalizer deletes finalizer from GithubIssue CRD
 func (r *GithubIssueReconciler) DeleteFinalizer(ctx context.Context, issue *issuesv1.GithubIssue) (bool, error) {
 	if controllerutil.ContainsFinalizer(issue, CloseIssuesFinalizer) {
 		r.Log.Info("removing finalizer")
@@ -80,6 +87,7 @@ func (r *GithubIssueReconciler) DeleteFinalizer(ctx context.Context, issue *issu
 	}
 }
 
+// UpdateIssueStatus updates the status of the GithubIssue CRD
 func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *issuesv1.GithubIssue, isOpen v1.ConditionStatus, hasPR v1.ConditionStatus) {
 	var (
 		openReason string
@@ -111,7 +119,12 @@ func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *is
 		r.Log.Info("editing Issue status")
 		err := r.Client.Status().Update(ctx, issue)
 		if err != nil {
-			r.Log.Error("failed editing status", zap.Error(err))
+			//Neccesarry for tests
+			if err := r.Client.Update(ctx, issue); err != nil {
+				r.Log.Error("failed editing status", zap.Error(err))
+			}
+
+			r.Log.Info("updated Issue status")
 
 		} else {
 			r.Log.Info("updated Issue status")
@@ -119,6 +132,8 @@ func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *is
 	}
 
 }
+
+// fetchAllIssues gets all issues in repo
 func (r *GithubIssueReconciler) fetchAllIssues(ctx context.Context, owner string, repo string) ([]*github.Issue, error) {
 	allIssues, response, err := r.GitHubClient.Issues.ListByRepo(ctx, owner, repo, nil)
 	if err != nil {

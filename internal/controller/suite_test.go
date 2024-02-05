@@ -18,9 +18,17 @@ package controller
 
 import (
 	"context"
-	issuesv1 "dvir.io/githubissue/api/v1"
 	"fmt"
+
+	issuesv1 "dvir.io/githubissue/api/v1"
 	"k8s.io/client-go/kubernetes/scheme"
+
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+	"time"
 
 	"github.com/google/go-github/v56/github"
 	. "github.com/onsi/ginkgo/v2"
@@ -31,18 +39,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
-	"net/http"
-	"os"
-	"path/filepath"
-	"runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"testing"
-	"time"
 	//+kubebuilder:scaffold:imports
 )
 

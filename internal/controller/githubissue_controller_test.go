@@ -193,81 +193,81 @@ var testFailedCreatingIssue = Describe("githubIssue controller", func() {
 	})
 })
 
-//var testFailedUpdatingIssue = Describe("githubIssue controller", func() {
-//	Context("When creating githubIssue ", func() {
-//		It("Receive error when trying to update an issue", func() {
-//			By("editing Issue")
-//
-//			ctx := context.Background()
-//			testIssue := GenerateTestIssue()
-//			c, s, err := CreateFakeClient(testIssue)
-//			Expect(err).To(BeNil())
-//
-//			MockClient = mock.NewMockedHTTPClient(
-//				mock.WithRequestMatch(
-//					mock.GetReposIssuesByOwnerByRepo,
-//					[]*github.Issue{
-//						{
-//							ID:     github.Int64(123),
-//							Number: github.Int(123),
-//							Title:  github.String(testIssue.Spec.Title),
-//						},
-//						{
-//							ID:     github.Int64(456),
-//							Number: github.Int(456),
-//							Title:  github.String("Issue 2"),
-//						},
-//					},
-//					[]*github.Issue{
-//						{
-//							ID:     github.Int64(123),
-//							Number: github.Int(123),
-//							Title:  github.String(testIssue.Spec.Title),
-//						},
-//						{
-//							ID:     github.Int64(456),
-//							Number: github.Int(456),
-//							Title:  github.String("Issue 2"),
-//						},
-//					},
-//				),
-//				mock.WithRequestMatchHandler(
-//					mock.PatchReposIssuesByOwnerByRepoByIssueNumber,
-//					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//						mock.WriteError(
-//							w,
-//							http.StatusInternalServerError,
-//							"github went belly up or something",
-//						)
-//					}),
-//				),
-//			)
-//
-//			ghClient := github.NewClient(MockClient)
-//			r := &GithubIssueReconciler{Client: c,
-//				Scheme: s, Log: TestLog, GitHubClient: ghClient}
-//
-//			req := reconcile.Request{
-//				NamespacedName: types.NamespacedName{
-//					Name:      testIssue.ObjectMeta.Name,
-//					Namespace: testIssue.Namespace,
-//				},
-//			}
-//
-//			_, err = r.Reconcile(ctx, req)
-//			Expect(err).To(HaveOccurred())
-//			var ghErr *github.ErrorResponse
-//			ok := errors.As(err, &ghErr)
-//
-//			Expect(ok).To(BeTrue())
-//
-//			Expect(ghErr.Message).To(Equal("github went belly up or something"))
-//
-//			githubIssueReconciled := issuesv1.GithubIssue{}
-//
-//			err = c.Get(ctx, req.NamespacedName, &githubIssueReconciled)
-//			Expect(err).ToNot(HaveOccurred())
-//			Expect(meta.IsStatusConditionTrue(githubIssueReconciled.Status.Conditions, "IssueIsOpen")).To(BeTrue())
-//		})
-//	})
-//})
+var testFailedUpdatingIssue = Describe("githubIssue controller", func() {
+	Context("When creating githubIssue ", func() {
+		It("Receive error when trying to update an issue", func() {
+			By("editing Issue")
+
+			ctx := context.Background()
+			testIssue := GenerateTestIssue()
+			c, s, err := CreateFakeClient(testIssue)
+			Expect(err).To(BeNil())
+
+			MockClient = mock.NewMockedHTTPClient(
+				mock.WithRequestMatch(
+					mock.GetReposIssuesByOwnerByRepo,
+					[]*github.Issue{
+						{
+							ID:     github.Int64(123),
+							Number: github.Int(123),
+							Title:  github.String(testIssue.Spec.Title),
+						},
+						{
+							ID:     github.Int64(456),
+							Number: github.Int(456),
+							Title:  github.String("Issue 2"),
+						},
+					},
+					[]*github.Issue{
+						{
+							ID:     github.Int64(123),
+							Number: github.Int(123),
+							Title:  github.String(testIssue.Spec.Title),
+						},
+						{
+							ID:     github.Int64(456),
+							Number: github.Int(456),
+							Title:  github.String("Issue 2"),
+						},
+					},
+				),
+				mock.WithRequestMatchHandler(
+					mock.PatchReposIssuesByOwnerByRepoByIssueNumber,
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						mock.WriteError(
+							w,
+							http.StatusInternalServerError,
+							"github went belly up or something",
+						)
+					}),
+				),
+			)
+
+			ghClient := github.NewClient(MockClient)
+			r := &GithubIssueReconciler{Client: c,
+				Scheme: s, Log: TestLog, GitHubClient: ghClient}
+
+			req := reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      testIssue.ObjectMeta.Name,
+					Namespace: testIssue.Namespace,
+				},
+			}
+
+			_, err = r.Reconcile(ctx, req)
+			Expect(err).To(HaveOccurred())
+			var ghErr *github.ErrorResponse
+			ok := errors.As(err, &ghErr)
+
+			Expect(ok).To(BeTrue())
+
+			Expect(ghErr.Message).To(Equal("github went belly up or something"))
+
+			githubIssueReconciled := issuesv1.GithubIssue{}
+
+			err = c.Get(ctx, req.NamespacedName, &githubIssueReconciled)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(meta.IsStatusConditionTrue(githubIssueReconciled.Status.Conditions, "IssueIsOpen")).To(BeTrue())
+		})
+	})
+})
