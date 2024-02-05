@@ -2,8 +2,10 @@ package controller
 
 import (
 	"context"
-	issuesv1 "dvir.io/githubissue/api/v1"
 	"errors"
+	"net/http"
+
+	issuesv1 "dvir.io/githubissue/api/v1"
 	"github.com/google/go-github/v56/github"
 	"github.com/migueleliasweb/go-github-mock/src/mock"
 	. "github.com/onsi/ginkgo/v2"
@@ -11,16 +13,16 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
-	"net/http"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"math/rand"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"math/rand"
 	. "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"time"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -118,7 +120,7 @@ var _ = Describe("githubIssue controller e2e test", func() {
 	})
 })
 
-var testFailedCreatingIssue = Describe("githubIssue controller", func() {
+var _ = Describe("githubIssue controller", func() {
 	Context("When creating githubIssue ", func() {
 		It("Receive error when trying to create an issue", func() {
 			By("create Issue")
@@ -193,7 +195,7 @@ var testFailedCreatingIssue = Describe("githubIssue controller", func() {
 	})
 })
 
-var testFailedUpdatingIssue = Describe("githubIssue controller", func() {
+var _ = Describe("githubIssue controller", func() {
 	Context("When creating githubIssue ", func() {
 		It("Receive error when trying to update an issue", func() {
 			By("editing Issue")

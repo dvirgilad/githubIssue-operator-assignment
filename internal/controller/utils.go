@@ -27,7 +27,8 @@ func isGitHubURL(inputUrl string) (giturl.IGitURL, error) {
 // Checks if GithubIssue CRD has an issue in the repo
 func searchForIssue(issue *issuesv1.GithubIssue, gitHubIssues []*github.Issue) *github.Issue {
 	for _, ghIssue := range gitHubIssues {
-		if strings.ToUpper(*ghIssue.Title) == strings.ToUpper(issue.Spec.Title) {
+		if strings.EqualFold(*ghIssue.Title, issue.Spec.Title) {
+
 			return ghIssue
 		}
 	}

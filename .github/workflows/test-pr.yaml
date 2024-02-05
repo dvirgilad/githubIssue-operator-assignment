@@ -18,9 +18,9 @@ jobs:
           go-version-file: go.mod
       - name: Go Vet
         run: go vet ./...
-      - name: golangci-lint
+      - name: lint
         uses: golangci/golangci-lint-action@v3
         with:
           version: v1.54
-      - name: Unit-test
+      - name: run unittests
         run: make test
