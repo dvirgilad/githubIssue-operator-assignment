@@ -25,4 +25,4 @@ jobs:
       - name: run unittests
         run: make test
         env:
-          GITHUB_TOKEN: ${{GH_TOKEN}}
+          GITHUB_TOKEN: ${{secrets.GH_TOKEN}}
