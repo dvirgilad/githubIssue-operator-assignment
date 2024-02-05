@@ -24,3 +24,5 @@ jobs:
           version: v1.54
       - name: run unittests
         run: make test
+        env:
+          GITHUB_TOKEN: ${{GH_TOKEN}}
