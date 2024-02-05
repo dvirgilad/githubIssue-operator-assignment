@@ -80,7 +80,7 @@ func (r *GithubIssueReconciler) DeleteFinalizer(ctx context.Context, issue *issu
 	}
 }
 
-func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *issuesv1.GithubIssue, isOpen v1.ConditionStatus, hasPR v1.ConditionStatus) error {
+func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *issuesv1.GithubIssue, isOpen v1.ConditionStatus, hasPR v1.ConditionStatus) {
 	var (
 		openReason string
 		pullReason string
@@ -106,17 +106,17 @@ func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *is
 		meta.SetStatusCondition(&issue.Status.Conditions, *hasPRCondition)
 		changed = true
 	}
+
 	if changed {
 		r.Log.Info("editing Issue status")
 		err := r.Client.Status().Update(ctx, issue)
 		if err != nil {
 			r.Log.Error("failed editing status", zap.Error(err))
-			return err
 
+		} else {
+			r.Log.Info("updated Issue status")
 		}
-
 	}
-	return nil
 
 }
 func (r *GithubIssueReconciler) fetchAllIssues(ctx context.Context, owner string, repo string) ([]*github.Issue, error) {

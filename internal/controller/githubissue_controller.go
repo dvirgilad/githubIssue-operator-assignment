@@ -39,7 +39,7 @@ type GithubIssueReconciler struct {
 	GitHubClient *github.Client
 }
 
-const ResyncDuration = 1 * time.Minute
+const ResyncDuration = 5 * time.Minute
 
 const CloseIssuesFinalizer = "issues.dvir.io/finalizer"
 
@@ -115,16 +115,12 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			newIssue := &github.IssueRequest{Title: &issueObject.Spec.Title, Body: &issueObject.Spec.Description}
 			_, response, err := r.GitHubClient.Issues.Create(ctx, owner, repo, newIssue)
 			if err != nil {
-				err := errors.New(fmt.Sprintf("could not create issue: status %s", response.Status))
-				log.Error("failed creating issue", zap.Error(err))
-				if err = r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionFalse, metav1.ConditionFalse); err != nil {
-					return ctrl.Result{}, err
-				}
+
+				log.Error(fmt.Sprintf("failed creating issue: status %s", response.Status), zap.Error(err))
+				r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionFalse, metav1.ConditionFalse)
 				return ctrl.Result{}, err
 			}
-			if err = r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionTrue, metav1.ConditionFalse); err != nil {
-				return ctrl.Result{}, err
-			}
+			r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionTrue, metav1.ConditionFalse)
 			log.Info("issue created")
 			return ctrl.Result{RequeueAfter: ResyncDuration}, nil
 
@@ -134,8 +130,8 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			editIssueRequest := &github.IssueRequest{Body: &issueObject.Spec.Description}
 			_, response, err := r.GitHubClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, editIssueRequest)
 			if err != nil {
-				err := errors.New(fmt.Sprintf("could not edit issue: status %s", response.Status))
-				log.Error("failed editing issue", zap.Error(err))
+				log.Error(fmt.Sprintf("could not edit issue: status %s", response.Status), zap.Error(err))
+				r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionTrue, metav1.ConditionFalse)
 				return ctrl.Result{}, err
 			}
 			tl, _, err := r.GitHubClient.Issues.ListIssueTimeline(ctx, owner, repo, *gitHubIssue.Number, nil)
@@ -145,9 +141,7 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 
 			hasPR := searchForPR(tl)
-			if err = r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionTrue, hasPR); err != nil {
-				return ctrl.Result{}, err
-			}
+			r.UpdateIssueStatus(ctx, issueObject, metav1.ConditionTrue, hasPR)
 
 			log.Info("issue edited")
 			return ctrl.Result{RequeueAfter: ResyncDuration}, nil

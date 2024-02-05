@@ -67,7 +67,7 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
-
+	println(os.Getenv("GITHUB_TOKEN"))
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	encoderConfig := ecszap.NewDefaultEncoderConfig()
 	core := ecszap.NewCore(encoderConfig, os.Stdout, uberzap.DebugLevel)
