@@ -40,7 +40,7 @@ type GithubIssueReconciler struct {
 	GitHubClient *github.Client
 }
 
-const ResyncDuration = 5 * time.Minute
+const ResyncDuration = 1 * time.Minute
 
 const CloseIssuesFinalizer = "issues.dvir.io/finalizer"
 

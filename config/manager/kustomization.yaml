@@ -1,2 +1,6 @@
 resources:
 - manager.yaml
+secretGenerator:
+  - name: githubtoken
+    envs:
+      - .env.secret

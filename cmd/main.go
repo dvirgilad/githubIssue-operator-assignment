@@ -18,10 +18,11 @@ package main
 
 import (
 	"flag"
-	"os"
-
 	"github.com/google/go-github/v56/github"
 	"go.elastic.co/ecszap"
+	"os"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -70,6 +71,7 @@ func main() {
 	println(os.Getenv("GITHUB_TOKEN"))
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	encoderConfig := ecszap.NewDefaultEncoderConfig()
+	resyncPeriod := 1 * time.Minute
 	core := ecszap.NewCore(encoderConfig, os.Stdout, uberzap.DebugLevel)
 	ctrlog := uberzap.New(core, uberzap.AddCaller())
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -78,17 +80,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "995e4d87.dvir.io",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		Cache:                  cache.Options{SyncPeriod: &resyncPeriod},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

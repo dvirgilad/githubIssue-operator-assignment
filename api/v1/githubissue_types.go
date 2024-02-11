@@ -24,19 +24,23 @@ import (
 type GithubIssueSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern=`^https://github\.com/.*$`
+	// +kubebuilder:validation:Pattern=`^https:\/\/github\.com\/[\w.-]+\/[\w.-]+`
+	//Repo GitHub url of the repository where the issue should be created
 	Repo string `json:"repo,omitempty"`
 
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
+	//Title of the issue
 	Title string `json:"title,omitempty"`
 
 	// +kubebuilder:validation:Type=string
+	//Description string that goes in the body of the issue
 	Description string `json:"description,omitempty"`
 }
 
 // GithubIssueStatus defines the observed state of GithubIssue
 type GithubIssueStatus struct {
+	// Conditions is a slice of conditions on the issue, such as if it is open or closed or if it has an attached PR
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
