@@ -1,0 +1,12 @@
+apiVersion: issues.dvir.io/v1
+kind: GithubIssue
+metadata:
+  labels:
+    app.kubernetes.io/name: githubissue
+    app.kubernetes.io/instance: githubissue-sample
+    app.kubernetes.io/part-of: githubissue
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: githubissue
+  name: githubissue-sample
+spec:
+  # TODO(user): Add fields here
