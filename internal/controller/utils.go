@@ -2,27 +2,16 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	issuesv1 "dvir.io/githubissue/api/v1"
 	"github.com/google/go-github/v56/github"
-	giturl "github.com/kubescape/go-git-url"
-	"github.com/pkg/errors"
-	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
-
-// isGitHubURL checks if url is valid github repo URL
-func isGitHubURL(inputUrl string) (giturl.IGitURL, error) {
-	url, err := giturl.NewGitURL(inputUrl)
-	if err != nil {
-		return nil, errors.New("invalid url")
-	}
-	return url, nil
-}
 
 // Checks if GithubIssue CRD has an issue in the repo
 func searchForIssue(issue *issuesv1.GithubIssue, gitHubIssues []*github.Issue) *github.Issue {
@@ -35,22 +24,6 @@ func searchForIssue(issue *issuesv1.GithubIssue, gitHubIssues []*github.Issue) *
 	return nil
 }
 
-// SearchForPR searches issue timeline to check if issue has an active PR
-func searchForPR(timeline []*github.Timeline) v1.ConditionStatus {
-	for i := len(timeline) - 1; i >= 0; i-- {
-		event := timeline[i]
-		action := event.Event
-		if *action == "connected" || *action == "cross-referenced" {
-			return v1.ConditionTrue
-		}
-		if *action == "disconnected" {
-			return v1.ConditionFalse
-		}
-	}
-	return v1.ConditionFalse
-
-}
-
 // AddFinalizer adds finalizer to GithubIssue CRD
 func (r *GithubIssueReconciler) AddFinalizer(ctx context.Context, issue *issuesv1.GithubIssue) (err error) {
 
@@ -58,8 +31,7 @@ func (r *GithubIssueReconciler) AddFinalizer(ctx context.Context, issue *issuesv
 		r.Log.Info("adding finalizer")
 		controllerutil.AddFinalizer(issue, CloseIssuesFinalizer)
 		if err := r.Update(ctx, issue); err != nil {
-			r.Log.Error("unable to add finalizer", zap.Error(err))
-			return err
+			return fmt.Errorf("unable to add finalizer: %v", err.Error())
 		}
 		r.Log.Info("added finalizer")
 		return nil
@@ -77,8 +49,7 @@ func (r *GithubIssueReconciler) DeleteFinalizer(ctx context.Context, issue *issu
 		// remove finalizer
 		controllerutil.RemoveFinalizer(issue, CloseIssuesFinalizer)
 		if err := r.Update(ctx, issue); err != nil {
-			r.Log.Error("error removing finalizer", zap.Error(err))
-			return false, err
+			return false, fmt.Errorf("failed removing finalizer: %v", err.Error())
 		}
 		r.Log.Info("Removed finalizer")
 		return true, nil
@@ -89,49 +60,48 @@ func (r *GithubIssueReconciler) DeleteFinalizer(ctx context.Context, issue *issu
 }
 
 // UpdateIssueStatus updates the status of the GithubIssue CRD
-func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *issuesv1.GithubIssue, isOpen v1.ConditionStatus, hasPR v1.ConditionStatus) {
-	var (
-		openReason string
-		pullReason string
-	)
-	if hasPR == v1.ConditionTrue {
-		pullReason = "OpenPullRequest"
-	} else {
-		pullReason = "NoOpenPullRequest"
-	}
-	if isOpen == v1.ConditionTrue {
-		openReason = "IssueIsOpen"
-	} else {
-		openReason = "IssueIsClosed"
-	}
-	hasPRCondition := &v1.Condition{Type: "IssueHasPR", Status: hasPR, Reason: pullReason}
-	isOpenCondition := &v1.Condition{Type: "IssueIsOpen", Status: isOpen, Reason: openReason}
-	var changed = false
-	if !meta.IsStatusConditionPresentAndEqual(issue.Status.Conditions, "IssueIsOpen", isOpen) {
-		meta.SetStatusCondition(&issue.Status.Conditions, *isOpenCondition)
-		changed = true
-	}
-	if !meta.IsStatusConditionPresentAndEqual(issue.Status.Conditions, "IssueHasPR", hasPR) {
-		meta.SetStatusCondition(&issue.Status.Conditions, *hasPRCondition)
-		changed = true
-	}
+func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *issuesv1.GithubIssue, githubIssue *github.Issue) error {
+	PRChange := r.CheckForPr(githubIssue, issue)
+	OpenChange := r.CheckIfOpen(githubIssue, issue)
 
-	if changed {
+	if OpenChange == true || PRChange == true {
 		r.Log.Info("editing Issue status")
 		err := r.Client.Status().Update(ctx, issue)
 		if err != nil {
-			//Neccesarry for tests
+			//Necessary for tests
 			if err := r.Client.Update(ctx, issue); err != nil {
-				r.Log.Error("failed editing status", zap.Error(err))
+				return fmt.Errorf("unable to update status of CR: %v", err.Error())
 			}
-
-			r.Log.Info("updated Issue status")
-
-		} else {
-			r.Log.Info("updated Issue status")
 		}
-	}
+		r.Log.Info("updated Issue status")
+		return nil
 
+	}
+	return nil
+
+}
+
+func (r *GithubIssueReconciler) CheckIfOpen(githubIssue *github.Issue, issueObject *issuesv1.GithubIssue) bool {
+	condition := &v1.Condition{Type: "IssueIsOpen", Status: v1.ConditionTrue, Message: "Issue is open"}
+	if githubIssue.GetState() != "open" {
+		condition = &v1.Condition{Type: "IssueIsOpen", Status: v1.ConditionFalse, Message: fmt.Sprintf("Issue is %s", *githubIssue.State)}
+	}
+	if !meta.IsStatusConditionPresentAndEqual(issueObject.Status.Conditions, "IssueIsOpen", condition.Status) {
+		meta.SetStatusCondition(&issueObject.Status.Conditions, *condition)
+		return true
+	}
+	return false
+}
+func (r *GithubIssueReconciler) CheckForPr(githubIssue *github.Issue, issueObject *issuesv1.GithubIssue) bool {
+	condition := &v1.Condition{Type: "IssueHasPR", Status: v1.ConditionFalse, Message: "Issue has no pr"}
+	if githubIssue.GetPullRequestLinks() != nil {
+		condition = &v1.Condition{Type: "IssueHasPR", Status: v1.ConditionTrue, Message: fmt.Sprintf("Issue is %s", *githubIssue.State)}
+	}
+	if !meta.IsStatusConditionPresentAndEqual(issueObject.Status.Conditions, "IssueHasPR", condition.Status) {
+		meta.SetStatusCondition(&issueObject.Status.Conditions, *condition)
+		return true
+	}
+	return false
 }
 
 // fetchAllIssues gets all issues in repo
@@ -139,12 +109,68 @@ func (r *GithubIssueReconciler) fetchAllIssues(ctx context.Context, owner string
 	allIssues, response, err := r.GitHubClient.Issues.ListByRepo(ctx, owner, repo, nil)
 	if err != nil {
 		if response != nil {
-			r.Log.Error(fmt.Sprintf("failed fetching issues: %s", response.Status), zap.Error(err))
-			return []*github.Issue{}, err
+			return []*github.Issue{}, fmt.Errorf("got bad response from GitHub: %s: %v", response.Status, err.Error())
 		}
-		r.Log.Error("failed fetching issues", zap.Error(err))
-		return []*github.Issue{}, err
+		return []*github.Issue{}, fmt.Errorf("failed fetching issues: %v", err.Error())
 	}
 	r.Log.Info("fetched issues")
 	return allIssues, nil
+}
+
+// CloseIssue closes the issue on GitHub
+func (r *GithubIssueReconciler) CloseIssue(ctx context.Context, owner string, repo string, gitHubIssue *github.Issue) error {
+	if gitHubIssue == nil {
+		err := errors.New("could not find issue in repo")
+
+		return err
+	}
+	state := "closed"
+	closedIssueRequest := &github.IssueRequest{State: &state}
+	_, _, err := r.GitHubClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, closedIssueRequest)
+	if err != nil {
+		err := errors.New("could not close issue")
+		return err
+	}
+	return nil
+}
+
+// CreateIssue add an issue to the repo
+func (r *GithubIssueReconciler) CreateIssue(ctx context.Context, owner string, repo string, issueObject *issuesv1.GithubIssue) error {
+	newIssue := &github.IssueRequest{Title: &issueObject.Spec.Title, Body: &issueObject.Spec.Description}
+	_, response, err := r.GitHubClient.Issues.Create(ctx, owner, repo, newIssue)
+	if err != nil {
+		if response != nil {
+			return fmt.Errorf("failed creating issue: status %s: %v", response.Status, err.Error())
+		} else {
+			return fmt.Errorf("failed creating error: %v", err.Error())
+
+		}
+	}
+	if response.StatusCode != 201 {
+		return fmt.Errorf("failed creating issue: status %s", response.Status)
+	}
+	return nil
+}
+
+// EditIssue change the description of an existing issue in the repo
+func (r *GithubIssueReconciler) EditIssue(ctx context.Context, owner string, repo string, issueObject *issuesv1.GithubIssue, issueNumber int) error {
+	editIssueRequest := &github.IssueRequest{Body: &issueObject.Spec.Description}
+	_, response, err := r.GitHubClient.Issues.Edit(ctx, owner, repo, issueNumber, editIssueRequest)
+	if err != nil {
+		if response != nil {
+
+			return fmt.Errorf("failed editing issue: %v", err.Error())
+		}
+		return fmt.Errorf("failed editing issue: status %s: %v", response.Status, err.Error())
+
+	}
+	return nil
+}
+
+func (r *GithubIssueReconciler) FindIssue(ctx context.Context, owner string, repo string, issue *issuesv1.GithubIssue) (*github.Issue, error) {
+	allIssues, err := r.fetchAllIssues(ctx, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("falied fetching error: %v", err.Error())
+	}
+	return searchForIssue(issue, allIssues), nil
 }

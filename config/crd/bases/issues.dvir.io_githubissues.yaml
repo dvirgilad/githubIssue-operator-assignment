@@ -35,17 +35,23 @@ spec:
             description: GithubIssueSpec defines the desired state of GithubIssue
             properties:
               description:
+                description: Description string that goes in the body of the issue
                 type: string
               repo:
-                pattern: ^https://github\.com/.*$
+                description: Repo GitHub url of the repository where the issue should
+                  be created
+                pattern: ^https:\/\/github\.com\/[\w.-]+\/[\w.-]+
                 type: string
               title:
+                description: Title of the issue
                 type: string
             type: object
           status:
             description: GithubIssueStatus defines the observed state of GithubIssue
             properties:
               conditions:
+                description: Conditions is a slice of conditions on the issue, such
+                  as if it is open or closed or if it has an attached PR
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct

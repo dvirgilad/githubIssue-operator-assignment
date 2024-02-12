@@ -18,11 +18,12 @@ package main
 
 import (
 	"flag"
+	"os"
+	"time"
+
 	"github.com/google/go-github/v56/github"
 	"go.elastic.co/ecszap"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
