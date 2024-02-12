@@ -94,14 +94,14 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		//Issue does not exist, create it
 		log.Info("creating issue")
-		err := r.CreateIssue(ctx, owner, repo, issueObject)
+		err = r.CreateIssue(ctx, owner, repo, issueObject)
 		if err != nil {
 			if statusErr := r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); err != nil {
 				log.Error("error updating status ", zap.Error(statusErr))
 			}
 			return ctrl.Result{}, err
 		}
-		gitHubIssue, err := r.FindIssue(ctx, owner, repo, issueObject)
+		gitHubIssue, err = r.FindIssue(ctx, owner, repo, issueObject)
 		if err != nil {
 			log.Error("failed fetching issue", zap.Error(err))
 			return ctrl.Result{}, err
@@ -117,6 +117,14 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Info("editing issue")
 
 		if err := r.EditIssue(ctx, owner, repo, issueObject, *gitHubIssue.Number); err != nil {
+			gitHubIssue, issueErr := r.FindIssue(ctx, owner, repo, issueObject)
+			if issueErr != nil {
+				log.Error("failed fetching issue", zap.Error(err))
+				return ctrl.Result{}, err
+			}
+			if statusErr := r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); statusErr != nil {
+				log.Error("error updating status ", zap.Error(err))
+			}
 			return ctrl.Result{}, err
 		}
 		gitHubIssue, err := r.FindIssue(ctx, owner, repo, issueObject)

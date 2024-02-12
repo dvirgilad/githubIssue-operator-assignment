@@ -64,7 +64,7 @@ func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *is
 	PRChange := r.CheckForPr(githubIssue, issue)
 	OpenChange := r.CheckIfOpen(githubIssue, issue)
 
-	if OpenChange == true || PRChange == true {
+	if OpenChange || PRChange {
 		r.Log.Info("editing Issue status")
 		err := r.Client.Status().Update(ctx, issue)
 		if err != nil {
@@ -81,10 +81,11 @@ func (r *GithubIssueReconciler) UpdateIssueStatus(ctx context.Context, issue *is
 
 }
 
+// CheckIfOpen check if issue is open
 func (r *GithubIssueReconciler) CheckIfOpen(githubIssue *github.Issue, issueObject *issuesv1.GithubIssue) bool {
-	condition := &v1.Condition{Type: "IssueIsOpen", Status: v1.ConditionTrue, Message: "Issue is open"}
-	if githubIssue.GetState() != "open" {
-		condition = &v1.Condition{Type: "IssueIsOpen", Status: v1.ConditionFalse, Message: fmt.Sprintf("Issue is %s", *githubIssue.State)}
+	condition := &v1.Condition{Type: "IssueIsOpen", Status: v1.ConditionTrue, Reason: "IssueIsOpen", Message: "Issue is open"}
+	if state := githubIssue.GetState(); state != "open" {
+		condition = &v1.Condition{Type: "IssueIsOpen", Status: v1.ConditionFalse, Reason: fmt.Sprintf("Issueis%s", state), Message: fmt.Sprintf("Issue is %s", state)}
 	}
 	if !meta.IsStatusConditionPresentAndEqual(issueObject.Status.Conditions, "IssueIsOpen", condition.Status) {
 		meta.SetStatusCondition(&issueObject.Status.Conditions, *condition)
@@ -92,10 +93,12 @@ func (r *GithubIssueReconciler) CheckIfOpen(githubIssue *github.Issue, issueObje
 	}
 	return false
 }
+
+// CheckForPr check if issue has an open PR
 func (r *GithubIssueReconciler) CheckForPr(githubIssue *github.Issue, issueObject *issuesv1.GithubIssue) bool {
-	condition := &v1.Condition{Type: "IssueHasPR", Status: v1.ConditionFalse, Message: "Issue has no pr"}
+	condition := &v1.Condition{Type: "IssueHasPR", Status: v1.ConditionFalse, Reason: "IssueHasnopr", Message: "Issue has no pr"}
 	if githubIssue.GetPullRequestLinks() != nil {
-		condition = &v1.Condition{Type: "IssueHasPR", Status: v1.ConditionTrue, Message: fmt.Sprintf("Issue is %s", *githubIssue.State)}
+		condition = &v1.Condition{Type: "IssueHasPR", Status: v1.ConditionTrue, Reason: "IssueHasPR", Message: "Issue Has an open PR"}
 	}
 	if !meta.IsStatusConditionPresentAndEqual(issueObject.Status.Conditions, "IssueHasPR", condition.Status) {
 		meta.SetStatusCondition(&issueObject.Status.Conditions, *condition)
@@ -106,7 +109,8 @@ func (r *GithubIssueReconciler) CheckForPr(githubIssue *github.Issue, issueObjec
 
 // fetchAllIssues gets all issues in repo
 func (r *GithubIssueReconciler) fetchAllIssues(ctx context.Context, owner string, repo string) ([]*github.Issue, error) {
-	allIssues, response, err := r.GitHubClient.Issues.ListByRepo(ctx, owner, repo, nil)
+	opt := &github.IssueListByRepoOptions{}
+	allIssues, response, err := r.GitHubClient.Issues.ListByRepo(ctx, owner, repo, opt)
 	if err != nil {
 		if response != nil {
 			return []*github.Issue{}, fmt.Errorf("got bad response from GitHub: %s: %v", response.Status, err.Error())

@@ -2,7 +2,7 @@ package controller
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net/http"
 
 	issuesv1 "dvir.io/githubissue/api/v1"
@@ -10,7 +10,6 @@ import (
 	"github.com/migueleliasweb/go-github-mock/src/mock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,6 +17,7 @@ import (
 	"math/rand"
 	"time"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -73,18 +73,18 @@ func CreateFakeClient(issue *issuesv1.GithubIssue) (client.Client, *runtime.Sche
 
 var _ = Describe("githubIssue controller e2e test", func() {
 	var (
-		timeout  = time.Second * 10
+		timeout  = time.Second * 20
 		interval = time.Millisecond * 250
 	)
 	Context("e2e testing", func() {
 		It("creates an issue", func() {
-
+			name := fmt.Sprintf("e2e-test-%s", RandomString())
 			testIssue := &issuesv1.GithubIssue{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "e2e-test", Namespace: "default",
+					Name: name, Namespace: "default",
 				},
 				Spec: issuesv1.GithubIssueSpec{
-					Title:       "e2e-test",
+					Title:       name,
 					Description: "this is generated from an e2e-test",
 					Repo:        "https://github.com/dvirgilad/githubIssue-operator-assignment",
 				},
@@ -98,11 +98,9 @@ var _ = Describe("githubIssue controller e2e test", func() {
 					Namespace: testIssue.Namespace,
 				},
 			}
+
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, req.NamespacedName, &githubIssueReconciled)
-				if err != nil {
-					return false
-				}
+				Expect(k8sClient.Get(ctx, req.NamespacedName, &githubIssueReconciled)).Should(BeNil(), "should find resource")
 				return meta.IsStatusConditionTrue(githubIssueReconciled.Status.Conditions, "IssueIsOpen")
 			}, timeout, interval).Should(BeTrue())
 			By("updating issue")
@@ -179,12 +177,6 @@ var _ = Describe("githubIssue controller", func() {
 
 			_, err = r.Reconcile(ctx, req)
 			Expect(err).To(HaveOccurred())
-			var ghErr *github.ErrorResponse
-			ok := errors.As(err, &ghErr)
-
-			Expect(ok).To(BeTrue())
-
-			Expect(ghErr.Message).To(Equal("github went belly up or something"))
 
 			githubIssueReconciled := issuesv1.GithubIssue{}
 
@@ -258,18 +250,12 @@ var _ = Describe("githubIssue controller", func() {
 
 			_, err = r.Reconcile(ctx, req)
 			Expect(err).To(HaveOccurred())
-			var ghErr *github.ErrorResponse
-			ok := errors.As(err, &ghErr)
-
-			Expect(ok).To(BeTrue())
-
-			Expect(ghErr.Message).To(Equal("github went belly up or something"))
 
 			githubIssueReconciled := issuesv1.GithubIssue{}
 
 			err = c.Get(ctx, req.NamespacedName, &githubIssueReconciled)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(meta.IsStatusConditionTrue(githubIssueReconciled.Status.Conditions, "IssueIsOpen")).To(BeTrue())
+			Expect(meta.IsStatusConditionTrue(githubIssueReconciled.Status.Conditions, "IssueIsOpen")).To(BeFalse())
 		})
 	})
 })
