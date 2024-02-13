@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	issuesv1 "dvir.io/githubissue/api/v1"
@@ -130,10 +131,16 @@ func (r *GithubIssueReconciler) CloseIssue(ctx context.Context, owner string, re
 	}
 	state := "closed"
 	closedIssueRequest := &github.IssueRequest{State: &state}
-	_, _, err := r.GitHubClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, closedIssueRequest)
+	_, response, err := r.GitHubClient.Issues.Edit(ctx, owner, repo, *gitHubIssue.Number, closedIssueRequest)
 	if err != nil {
-		err := errors.New("could not close issue")
-		return err
+		if response != nil {
+
+			return fmt.Errorf("failed closing issue: %v:%s", err.Error(), response.Status)
+		}
+	}
+	if response != nil && response.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed closing issue: %s", response.Status)
+
 	}
 	return nil
 }
@@ -150,7 +157,7 @@ func (r *GithubIssueReconciler) CreateIssue(ctx context.Context, owner string, r
 
 		}
 	}
-	if response.StatusCode != 201 {
+	if response.StatusCode != http.StatusCreated {
 		return fmt.Errorf("failed creating issue: status %s", response.Status)
 	}
 	return nil

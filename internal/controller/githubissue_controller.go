@@ -68,11 +68,7 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	// Check if issues is being deleted
 	if !issueObject.ObjectMeta.DeletionTimestamp.IsZero() {
-		//Issue is being deleted: close it
-		log.Info("closing issue")
-		if err := r.CloseIssue(ctx, owner, repo, gitHubIssue); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed closing issue: %v", err.Error())
-		}
+		//delete finalizer
 		ok, err := r.DeleteFinalizer(ctx, issueObject)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -80,6 +76,11 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if ok {
 				return ctrl.Result{}, nil
 			}
+		}
+		//Issue is being deleted: close it
+		log.Info("closing issue")
+		if err := r.CloseIssue(ctx, owner, repo, gitHubIssue); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed closing issue: %v", err.Error())
 		}
 
 	}
@@ -96,8 +97,9 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Info("creating issue")
 		err = r.CreateIssue(ctx, owner, repo, issueObject)
 		if err != nil {
-			if statusErr := r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); err != nil {
+			if statusErr := r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); statusErr != nil {
 				log.Error("error updating status ", zap.Error(statusErr))
+				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, err
 		}
@@ -106,8 +108,10 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Error("failed fetching issue", zap.Error(err))
 			return ctrl.Result{}, err
 		}
-		if err := r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); err != nil {
+		if err = r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); err != nil {
 			log.Error("error updating status ", zap.Error(err))
+			return ctrl.Result{}, err
+
 		}
 		log.Info("issue created")
 		return ctrl.Result{}, nil
@@ -120,10 +124,11 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			gitHubIssue, issueErr := r.FindIssue(ctx, owner, repo, issueObject)
 			if issueErr != nil {
 				log.Error("failed fetching issue", zap.Error(err))
-				return ctrl.Result{}, err
+				return ctrl.Result{}, issueErr
 			}
 			if statusErr := r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); statusErr != nil {
 				log.Error("error updating status ", zap.Error(err))
+				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, err
 		}
@@ -134,6 +139,7 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		if err := r.UpdateIssueStatus(ctx, issueObject, gitHubIssue); err != nil {
 			log.Error("error updating status ", zap.Error(err))
+			return ctrl.Result{}, err
 		}
 		log.Info("issue edited")
 		return ctrl.Result{}, nil
